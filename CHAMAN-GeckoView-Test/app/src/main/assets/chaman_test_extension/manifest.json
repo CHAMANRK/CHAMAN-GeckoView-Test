@@ -1,0 +1,35 @@
+{
+  "manifest_version": 2,
+  "name": "CHAMAN Cookie Bridge Test",
+  "version": "1.0.0",
+  "description": "Tests GeckoView WebExtension installation, cookie API access and native messaging without exporting cookie values.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "chaman-cookie-bridge-test@chaman.app"
+    }
+  },
+  "permissions": [
+    "cookies",
+    "geckoViewAddons",
+    "nativeMessaging",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
