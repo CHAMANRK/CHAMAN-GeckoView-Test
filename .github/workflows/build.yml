@@ -2,7 +2,6 @@ name: Build CHAMAN GeckoView Test APK
 
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -23,8 +22,6 @@ jobs:
           java-version: "17"
 
       # ubuntu-latest already ships the Android SDK (ANDROID_HOME set).
-      # android-actions/setup-android was removed: it tried to install the
-      # obsolete `tools` package and sdkmanager failed with exit code 1.
       - name: Install Android SDK packages
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -34,7 +31,10 @@ jobs:
           echo "Using sdkmanager: $SDKM"
           test -x "$SDKM"
           yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" --install "platform-tools" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0"
+          "$SDKM" --install "platform-tools" "platforms;android-35" "build-tools;36.0.0"
+          # compileSdk 37 platform: best effort (AGP can also auto-download it)
+          "$SDKM" --list 2>/dev/null | grep -E "platforms;android-(36|37)" || true
+          "$SDKM" --install "platforms;android-37.0" || "$SDKM" --install "platforms;android-37" || echo "WARN: could not pre-install android-37 platform"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -42,7 +42,28 @@ jobs:
           gradle-version: "8.14.3"
 
       - name: Build ARM64 test APK
-        run: gradle :app:assembleRelease --no-daemon --stacktrace --console=plain
+        run: |
+          set -o pipefail
+          gradle :app:assembleRelease --no-daemon --stacktrace --console=plain 2>&1 | tee build.log
+
+      - name: Show dependency/AAR errors in summary
+        if: failure()
+        run: |
+          {
+            echo "### Build errors (copy from here)"
+            echo '```'
+            grep -n -B1 -A8 -E "Dependency '|issues? (was|were) found|What went wrong|Could not (resolve|find)|Unsupported|incompatible" build.log | head -n 150
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Copy APK
         run: |
