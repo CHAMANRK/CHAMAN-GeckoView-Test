@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
 
         address = EditText(this).apply {
             hint = "Enter website URL"
-            singleLine = true
+            isSingleLine = true
             setText("https://example.com")
             setTextColor(0xFFFFFFFF.toInt())
             setHintTextColor(0xFF9AA4B2.toInt())
@@ -119,6 +119,10 @@ class MainActivity : AppCompatActivity() {
             )
             .accept(
                 { extension ->
+                    if (extension == null) {
+                        status.text = "Extension install FAILED: extension is null"
+                        return@accept
+                    }
                     extension.setMessageDelegate(object : WebExtension.MessageDelegate {
                         override fun onMessage(
                             nativeApp: String,
@@ -152,7 +156,7 @@ class MainActivity : AppCompatActivity() {
                     session.loadUri("https://example.com")
                 },
                 { error ->
-                    status.text = "Extension install FAILED: ${error.message ?: error.javaClass.simpleName}"
+                    status.text = "Extension install FAILED: ${error?.message ?: error?.javaClass?.simpleName ?: "unknown"}"
                 }
             )
     }
