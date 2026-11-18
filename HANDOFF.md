@@ -28,6 +28,7 @@ Separate proof-of-concept APK to evaluate GeckoView as a possible engine for a f
 
 ## Changelog
 - 0.1 CI fix: `android-actions/setup-android@v3` hata diya (obsolete `tools` package pe sdkmanager exit 1). Runner ka preinstalled SDK use hota hai + `yes | sdkmanager --licenses` + packages install. APK copy step ab `*arm64-v8a*release*.apk` pin karta hai (splits se 2 APK banti hain).
+- CI fix #2: runner pe `sdkmanager` PATH me nahi tha (exit 127). Ab `$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager` (fallback: find) full path se chalta hai.
 - GeckoView version `160.0.20261104181552` abhi verify nahi hua; agar dependency resolve fail ho to pehle ye check karo.
 
 ## Required device tests
