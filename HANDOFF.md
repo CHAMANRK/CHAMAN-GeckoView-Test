@@ -33,6 +33,7 @@ Separate proof-of-concept APK to evaluate GeckoView as a possible engine for a f
 - CI fix #2: runner pe `sdkmanager` PATH me nahi tha (exit 127). Ab `$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager` (fallback: find) full path se chalta hai.
 - CI fix #3: `:app:checkReleaseAarMetadata` fail (13 issues). GeckoView ki androidx deps newer compileSdk/AGP maangti hain. Bumped compileSdk 35->36, AGP 8.7.3->8.11.1, Gradle 8.9->8.14.3, workflow me platforms;android-36 + build-tools;36.0.0 install. Agar phir fail ho to log ki `Dependency '...' requires` lines dekh ke exact version lena.
 - CI fix #4: v4 (compileSdk 36/AGP 8.11.1) bhi `checkReleaseAarMetadata` pe fail hua. Ab compileSdk 37 (36.1/37 dono requirements cover), AGP 8.13.2, Kotlin 2.3.10 (`kotlinOptions` -> `compilerOptions`). Workflow trigger: pehle sirf `main` pe tha par repo branch `master` hai, ab har push pe chalta hai. Build log artifact (`build-log`) + failure pe Job Summary me error lines aati hain.
+- CI fix #5 (real log mili): sirf 2 issues the: `androidx.core:core` aur `core-ktx` **1.19.1** ko AGP 9.1.0+ chahiye (GeckoView transitive laata hai). compileSdk 37 + AGP 8.13.2 ye baaki sab pass kar chuke the. Fix: `resolutionStrategy.force` se core/core-ktx 1.17.0 pin (app/build.gradle.kts). AGP 9 upgrade baad me alag step (Gradle 9.3+, kotlin-android plugin hatna).
 - GeckoView version `160.0.20261104181552` abhi verify nahi hua; agar dependency resolve fail ho to pehle ye check karo.
 
 ## Required device tests

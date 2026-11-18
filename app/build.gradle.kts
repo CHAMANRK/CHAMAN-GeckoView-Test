@@ -46,6 +46,14 @@ android {
     }
 }
 
+// GeckoView pulls androidx.core 1.19.1, which needs AGP 9.1+. We stay on AGP 8.13.2
+// and pin core/core-ktx to 1.17.0 (same family Mozilla builds GeckoView with).
+configurations.configureEach {
+    resolutionStrategy {
+        force("androidx.core:core:1.17.0", "androidx.core:core-ktx:1.17.0")
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
@@ -53,7 +61,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("org.mozilla.geckoview:geckoview:160.0.20261104181552")
