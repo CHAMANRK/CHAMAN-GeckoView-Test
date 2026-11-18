@@ -58,6 +58,32 @@ Separate proof-of-concept APK to evaluate GeckoView as a possible engine for a f
 - No existing V2 ad blocker/download detector migration.
 - No proof yet that YouTube/Instagram authenticated media extraction will work.
 
-## Next step after tests
-(Pehle concept explain karke Najeef ka "kardo/haan" lena, tabhi build.)
-If GeckoView startup + built-in extension + cookie API + native messaging all pass on-device, plan a separate integration spike for secure, explicit cookie handoff to CHAMAN Downloader. Never transfer cookie values without a clear user action and consent.
+## Next phase: Cookie Export plan (concept explain ho chuka, build ke liye "kardo/haan" PENDING)
+
+### Flow (user side)
+1. Mini browser me site pe login.
+2. Tap 1: native **Export** button (page ke andar ka button nahi).
+3. Tap 2: confirm dialog: "<site> ki N cookies Downloader ko bhejni hain? Ye tera login session hai."
+4. Cookies Downloader tak jati hain; Downloader yt-dlp `--cookies` ke saath use karta hai.
+
+### Technical concept
+- Extension `cookies.getAll` se **sirf current site ke domain** ki cookies leta hai (values ke saath, sirf export ke time), Netscape `cookies.txt` banata hai (yt-dlp ka format).
+- Export trigger sirf native Android button se; page JS trigger nahi kar sakta.
+- Handoff (recommended): explicit Intent sirf `com.chaman.downloader` ko + FileProvider content URI. Public `/sdcard/Download` me file nahi.
+- Downloader side: chhota receiver, cookies apni private storage me, site-wise, "Clear cookies" button.
+- Safety: user tap ke bina export nahi; cookie values na log me, na upload; handoff ke baad temp file delete; kabhi hardcode/chat me paste nahi.
+
+### Steps (har step device test pass hone par hi agla)
+- [ ] **Step 1** (GeckoView Test): native Export button, cookies.txt app cache me, screen pe sirf count + size. Test: file valid Netscape format me bani.
+- [ ] **Step 2**: Intent se Downloader ko handoff + Downloader me receiver (Downloader ka alag zip/HANDOFF). Test: login-required link yt-dlp se download hua.
+- [ ] **Step 3**: 1-2 tap UI polish + status bar overlap fix (edge-to-edge insets).
+
+### Architecture options (Downloader se kaise jodna hai)
+- **A. Alag apps + Intent handoff (recommended abhi):** Downloader halka rehta hai (GeckoView ka size/CI weight uspe nahi aata), dono independent update hote hain, working Downloader ko risk nahi. Con: 2 apps install, handoff ka ek confirm tap.
+- **B. Merge: browser ko Downloader ke andar tab banana (baad me, A prove hone ke baad):** ek app, cookies app ke bahar jati hi nahi. Con: GeckoView ki bahut badi native libs se APK size badhta hai, Downloader ka CI/toolchain bhi isi test jaisa heavy ho jayega (AGP 8.13.2, compileSdk 37, Kotlin 2.3, core pin), aur working ffmpeg/yt-dlp build ko risk.
+- **C. GeckoView ke bina: Downloader ke andar Android WebView + `CookieManager`:** sabse chhota, merge ka jhanjhat nahi. Con: Google/YouTube login jaise flows embedded WebView ko block kar sakte hain ("browser may not be secure"); isi wajah se GeckoView test kiya gaya. Sirf tab dekhna jab Instagram jaisi sites pe WebView kaafi ho.
+- Decision: abhi A, Najeef ka final confirm pending.
+
+### Risks / unknown
+- Cookie API chalna != yt-dlp accept karega. YouTube/Instagram cookies rotate kar sakte hain ya user-agent match maang sakte hain. Step 2 test me pata chalega.
+- Pehli test site: Najeef se confirm karna baaki (Instagram ya YouTube).
