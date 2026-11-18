@@ -1,117 +1,269 @@
 package com.chaman.geckotest
 
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.setPadding
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import org.json.JSONArray
 import org.json.JSONObject
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.WebExtension
+import java.io.File
+
+private data class Site(
+    val id: String,
+    val name: String,
+    val hint: String,
+    val startUrl: String,
+    // Used only for cookie export. Navigation is NOT restricted by this list.
+    val cookieDomains: List<String>
+)
+
+private val SITES = listOf(
+    Site(
+        id = "instagram",
+        name = "Instagram",
+        hint = "Login karo, phir Export dabao",
+        startUrl = "https://www.instagram.com/accounts/login/",
+        cookieDomains = listOf("instagram.com")
+    ),
+    Site(
+        id = "youtube",
+        name = "YouTube",
+        hint = "Google login ke baad Export dabao",
+        startUrl = "https://www.youtube.com/",
+        cookieDomains = listOf("youtube.com", "google.com")
+    )
+)
 
 class MainActivity : AppCompatActivity() {
     private lateinit var runtime: GeckoRuntime
     private lateinit var session: GeckoSession
     private lateinit var geckoView: GeckoView
     private lateinit var address: EditText
-    private lateinit var status: TextView
+    private lateinit var homeView: LinearLayout
+    private lateinit var browserView: LinearLayout
+    private lateinit var homeStatus: TextView
+    private lateinit var browserStatus: TextView
+
+    private var currentSite: Site? = null
+    private var pendingSite: Site? = null
+    private var exportPort: WebExtension.Port? = null
+    private var canGoBack = false
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Old exports never stay around between launches.
+        File(cacheDir, "cookies").deleteRecursively()
+
+        // Edge-to-edge (forced on targetSdk 35): pad root by the system bar insets so the
+        // title/URL bar no longer sits under the status bar.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(12)
-            setBackgroundColor(0xFF11151A.toInt())
+            setBackgroundColor(COLOR_BG)
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()
+            )
+            v.setPadding(
+                bars.left + dp(12),
+                bars.top + dp(8),
+                bars.right + dp(12),
+                bars.bottom + dp(8)
+            )
+            WindowInsetsCompat.CONSUMED
         }
 
-        val heading = TextView(this).apply {
-            text = "CHAMAN · GeckoView Proof of Concept"
-            textSize = 17f
-            setTextColor(0xFFF4F4F4.toInt())
-            setPadding(8)
-        }
-        root.addView(heading)
+        homeView = buildHome()
+        browserView = buildBrowser()
+        browserView.visibility = View.GONE
+        root.addView(homeView, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(browserView, LinearLayout.LayoutParams(-1, 0, 1f))
+        setContentView(root)
 
-        address = EditText(this).apply {
-            hint = "Enter website URL"
-            isSingleLine = true
-            setText("https://example.com")
-            setTextColor(0xFFFFFFFF.toInt())
-            setHintTextColor(0xFF9AA4B2.toInt())
-            setPadding(12)
-            imeOptions = EditorInfo.IME_ACTION_GO
-            setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == EditorInfo.IME_ACTION_GO) {
-                    loadAddress()
-                    true
-                } else false
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (browserView.visibility == View.VISIBLE) {
+                    if (canGoBack) session.goBack() else showHome()
+                } else {
+                    finish()
+                }
+            }
+        })
+
+        runtime = GeckoRuntime.create(this)
+        session = GeckoSession()
+        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLocationChange(
+                session: GeckoSession,
+                url: String?,
+                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+                hasUserGesture: Boolean
+            ) {
+                runOnUiThread { if (url != null) address.setText(url) }
+            }
+
+            override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
+                this@MainActivity.canGoBack = canGoBack
+            }
+
+            // Login popups (target=_blank / window.open) open in the same view.
+            override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+                session.loadUri(uri)
+                return null
             }
         }
-        root.addView(address)
+        session.open(runtime)
+        geckoView.setSession(session)
+
+        installExtension()
+    }
+
+    private fun buildHome(): LinearLayout {
+        val home = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        home.addView(TextView(this).apply {
+            text = "CHAMAN Cookie Browser"
+            textSize = 22f
+            setTextColor(COLOR_TEXT)
+            setPadding(dp(4), dp(12), dp(4), dp(4))
+        })
+        home.addView(TextView(this).apply {
+            text = "Site chuno, login karo, cookies export karo."
+            textSize = 13f
+            setTextColor(COLOR_MUTED)
+            setPadding(dp(4), 0, dp(4), dp(20))
+        })
+
+        for (site in SITES) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(16), dp(18), dp(16))
+                background = GradientDrawable().apply {
+                    setColor(COLOR_CARD)
+                    cornerRadius = dp(16).toFloat()
+                    setStroke(dp(1), COLOR_ACCENT)
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { openSite(site) }
+            }
+            card.addView(TextView(this).apply {
+                text = site.name
+                textSize = 18f
+                setTextColor(COLOR_TEXT)
+            })
+            card.addView(TextView(this).apply {
+                text = site.hint
+                textSize = 12f
+                setTextColor(COLOR_MUTED)
+                setPadding(0, dp(4), 0, 0)
+            })
+            val lp = LinearLayout.LayoutParams(-1, -2)
+            lp.bottomMargin = dp(12)
+            home.addView(card, lp)
+        }
+
+        // Pushes the status line to the bottom.
+        home.addView(View(this), LinearLayout.LayoutParams(-1, 0, 1f))
+        homeStatus = TextView(this).apply {
+            text = "Starting GeckoView…"
+            textSize = 12f
+            setTextColor(COLOR_ACCENT)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        home.addView(homeStatus)
+        return home
+    }
+
+    private fun buildBrowser(): LinearLayout {
+        val browser = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        // Read-only: shows where redirects went (so a fake login page is visible), no typing.
+        address = EditText(this).apply {
+            isSingleLine = true
+            ellipsize = TextUtils.TruncateAt.END
+            isFocusable = false
+            isFocusableInTouchMode = false
+            isCursorVisible = false
+            keyListener = null
+            setTextColor(COLOR_TEXT)
+            textSize = 13f
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+        browser.addView(address)
 
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val go = Button(this).apply {
-            text = "Go"
-            setOnClickListener { loadAddress() }
+        fun button(label: String, action: () -> Unit) = Button(this).apply {
+            text = label
+            setAllCaps(false)
+            textSize = 13f
+            setOnClickListener { action() }
         }
-        val back = Button(this).apply {
-            text = "Back"
-            setOnClickListener {
-                session.goBack()
-            }
-        }
-        val reload = Button(this).apply {
-            text = "Reload"
-            setOnClickListener { session.reload() }
-        }
-        controls.addView(go, LinearLayout.LayoutParams(0, -2, 1f))
-        controls.addView(back, LinearLayout.LayoutParams(0, -2, 1f))
-        controls.addView(reload, LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(controls)
+        controls.addView(button("Home") { showHome() }, LinearLayout.LayoutParams(0, -2, 1f))
+        controls.addView(button("Back") { session.goBack() }, LinearLayout.LayoutParams(0, -2, 1f))
+        controls.addView(button("Reload") { session.reload() }, LinearLayout.LayoutParams(0, -2, 1f))
+        controls.addView(button("Export") { startExport() }, LinearLayout.LayoutParams(0, -2, 1f))
+        browser.addView(controls)
 
-        status = TextView(this).apply {
-            text = "Starting GeckoView…"
+        browserStatus = TextView(this).apply {
             textSize = 12f
-            setTextColor(0xFFD7B56D.toInt())
-            setPadding(8)
+            setTextColor(COLOR_ACCENT)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
         }
-        root.addView(status)
+        browser.addView(browserStatus)
 
         geckoView = GeckoView(this)
-        root.addView(
-            geckoView,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        setContentView(root)
-
-        runtime = GeckoRuntime.create(this)
-        session = GeckoSession()
-        session.open(runtime)
-        geckoView.setSession(session)
-
-        installTestExtension()
+        browser.addView(geckoView, LinearLayout.LayoutParams(-1, 0, 1f))
+        return browser
     }
 
-    private fun installTestExtension() {
-        status.text = "Installing built-in WebExtension…"
+    private fun setStatus(text: String) {
+        runOnUiThread {
+            homeStatus.text = text
+            browserStatus.text = text
+        }
+    }
+
+    private fun openSite(site: Site) {
+        currentSite = site
+        pendingSite = null
+        homeView.visibility = View.GONE
+        browserView.visibility = View.VISIBLE
+        setStatus("${site.name}: login karke Export dabao")
+        session.loadUri(site.startUrl)
+    }
+
+    private fun showHome() {
+        pendingSite = null
+        browserView.visibility = View.GONE
+        homeView.visibility = View.VISIBLE
+    }
+
+    private fun installExtension() {
+        setStatus("Installing built-in WebExtension…")
         runtime.webExtensionController
             .ensureBuiltIn(
                 "resource://android/assets/chaman_test_extension/",
@@ -120,58 +272,113 @@ class MainActivity : AppCompatActivity() {
             .accept(
                 { extension ->
                     if (extension == null) {
-                        status.text = "Extension install FAILED: extension is null"
+                        setStatus("Extension install FAILED: extension is null")
                         return@accept
                     }
                     extension.setMessageDelegate(object : WebExtension.MessageDelegate {
-                        override fun onMessage(
-                            nativeApp: String,
-                            message: Any,
-                            sender: WebExtension.MessageSender
-                        ): GeckoResult<Any>? {
-                            runOnUiThread {
-                                if (message is JSONObject) {
+                        override fun onConnect(port: WebExtension.Port) {
+                            port.setDelegate(object : WebExtension.PortDelegate {
+                                override fun onPortMessage(message: Any, port: WebExtension.Port) {
+                                    if (message !is JSONObject) return
                                     when (message.optString("type")) {
-                                        "CHAMAN_COOKIE_COUNT" -> {
-                                            val host = message.optString("host")
-                                            val count = message.optInt("count")
-                                            status.text = "Extension OK · Cookie API OK · $host · $count cookies"
-                                            Toast.makeText(
-                                                this@MainActivity,
-                                                "Cookie API read $count cookies (values not shared)",
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                                        "HELLO" -> {
+                                            port.postMessage(JSONObject().put("type", "READY"))
+                                            runOnUiThread {
+                                                exportPort = port
+                                                setStatus("Ready · extension connected · site chuno")
+                                            }
                                         }
-                                        "CHAMAN_COOKIE_ERROR" -> {
-                                            status.text = "Cookie API error: ${message.optString("error")}"
+                                        "COOKIES_TXT" -> runOnUiThread { onCookiesText(message) }
+                                        "COOKIES_ERROR" -> runOnUiThread {
+                                            pendingSite = null
+                                            setStatus("Export error: ${message.optString("error")}")
                                         }
                                     }
                                 }
-                            }
-                            return null
+
+                                override fun onDisconnect(port: WebExtension.Port) {
+                                    runOnUiThread {
+                                        if (exportPort === port) exportPort = null
+                                    }
+                                }
+                            })
                         }
                     }, NATIVE_APP_ID)
-
-                    status.text = "GeckoView ready · WebExtension installed · Open a site and tap its test button"
-                    session.loadUri("https://example.com")
+                    setStatus("Extension installed · connecting…")
                 },
                 { error ->
-                    status.text = "Extension install FAILED: ${error?.message ?: error?.javaClass?.simpleName ?: "unknown"}"
+                    setStatus(
+                        "Extension install FAILED: ${error?.message ?: error?.javaClass?.simpleName ?: "unknown"}"
+                    )
                 }
             )
     }
 
-    private fun loadAddress() {
-        var value = address.text.toString().trim()
-        if (value.isBlank()) return
-        if (!value.contains("://")) {
-            value = if (value.contains('.') && !value.contains(' ')) "https://$value"
-            else "https://www.google.com/search?q=" + android.net.Uri.encode(value)
+    // Tap 1: only this native button can start an export. Page JS has no way to trigger it.
+    private fun startExport() {
+        val site = currentSite ?: return
+        val port = exportPort
+        if (port == null) {
+            setStatus("Extension abhi connect nahi hua, 2-3 sec baad phir dabao")
+            return
         }
-        address.setText(value)
-        session.loadUri(value)
+        pendingSite = site
+        setStatus("${site.name}: cookies read ho rahi hain…")
+        port.postMessage(
+            JSONObject()
+                .put("type", "EXPORT_COOKIES")
+                .put("site", site.id)
+                .put("domains", JSONArray(site.cookieDomains))
+        )
     }
 
+    private fun onCookiesText(message: JSONObject) {
+        val site = pendingSite ?: return
+        if (message.optString("site") != site.id) return
+        pendingSite = null
+
+        val text = message.optString("text")
+        val (good, bad) = validateNetscape(text)
+        if (bad > 0) {
+            setStatus("${site.name}: cookies.txt INVALID ($bad bad lines), save nahi hui")
+            return
+        }
+        if (good == 0) {
+            setStatus("${site.name}: 0 cookies mili. Pehle login karo, phir Export")
+            return
+        }
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val dir = File(cacheDir, "cookies").apply { mkdirs() }
+        File(dir, "${site.id}.txt").writeBytes(bytes)
+        // Only count and size are shown. Cookie names/values are never displayed or logged.
+        setStatus("${site.name} · $good cookies · ${formatSize(bytes.size)} · Netscape format valid · app cache me saved")
+    }
+
+    // Returns (valid data lines, invalid lines). Header must be the Netscape marker.
+    private fun validateNetscape(text: String): Pair<Int, Int> {
+        val lines = text.split("\n").map { it.trimEnd('\r') }.filter { it.isNotBlank() }
+        if (lines.isEmpty() || !lines[0].startsWith("# Netscape HTTP Cookie File")) {
+            return Pair(0, 1)
+        }
+        var good = 0
+        var bad = 0
+        for (line in lines.drop(1)) {
+            if (line.startsWith("#") && !line.startsWith("#HttpOnly_")) continue
+            val f = line.split("\t")
+            val ok = f.size == 7 &&
+                f[0].isNotEmpty() &&
+                (f[1] == "TRUE" || f[1] == "FALSE") &&
+                f[2].startsWith("/") &&
+                (f[3] == "TRUE" || f[3] == "FALSE") &&
+                f[4].toLongOrNull() != null &&
+                f[5].isNotEmpty()
+            if (ok) good++ else bad++
+        }
+        return Pair(good, bad)
+    }
+
+    private fun formatSize(bytes: Int): String =
+        if (bytes < 1024) "$bytes B" else String.format("%.1f KB", bytes / 1024.0)
 
     override fun onDestroy() {
         if (::session.isInitialized) {
@@ -183,5 +390,10 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val EXTENSION_ID = "chaman-cookie-bridge-test@chaman.app"
         private const val NATIVE_APP_ID = "chaman.browser"
+        private const val COLOR_BG = 0xFF11151A.toInt()
+        private const val COLOR_CARD = 0xFF20242B.toInt()
+        private const val COLOR_ACCENT = 0xFFD7B56D.toInt()
+        private const val COLOR_TEXT = 0xFFF4F4F4.toInt()
+        private const val COLOR_MUTED = 0xFF9AA4B2.toInt()
     }
 }

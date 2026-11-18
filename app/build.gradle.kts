@@ -13,8 +13,8 @@ android {
         applicationId = "com.chaman.browser.geckotest"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1-geckoview-test"
+        versionCode = 2
+        versionName = "0.2-cookie-export"
     }
 
     // Test APK is intentionally ARM64-only to keep the first GeckoView build smaller.

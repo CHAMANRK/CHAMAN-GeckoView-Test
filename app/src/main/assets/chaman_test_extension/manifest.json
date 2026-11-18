@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
-  "name": "CHAMAN Cookie Bridge Test",
-  "version": "1.0.0",
-  "description": "Tests GeckoView WebExtension installation, cookie API access and native messaging without exporting cookie values.",
+  "name": "CHAMAN Cookie Export",
+  "version": "2.0.0",
+  "description": "Exports cookies of Instagram and YouTube as Netscape cookies.txt, only when the native app asks for it. No page script, no network.",
   "browser_specific_settings": {
     "gecko": {
       "id": "chaman-cookie-bridge-test@chaman.app"
@@ -12,24 +12,13 @@
     "cookies",
     "geckoViewAddons",
     "nativeMessaging",
-    "https://*/*",
-    "http://*/*"
+    "https://*.instagram.com/*",
+    "https://*.youtube.com/*",
+    "https://*.google.com/*"
   ],
   "background": {
     "scripts": [
       "background.js"
     ]
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://*/*",
-        "http://*/*"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "run_at": "document_idle"
-    }
-  ]
+  }
 }
