@@ -22,11 +22,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # ubuntu-latest already ships the Android SDK (ANDROID_HOME set).
+      # android-actions/setup-android was removed: it tried to install the
+      # obsolete `tools` package and sdkmanager failed with exit code 1.
       - name: Install Android SDK packages
         run: |
+          yes | sdkmanager --licenses > /dev/null || true
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-35" \
@@ -42,7 +43,7 @@ jobs:
 
       - name: Copy APK
         run: |
-          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)
+          APK=$(find app/build/outputs/apk/release -name '*arm64-v8a*release*.apk' | head -n 1)
           test -n "$APK"
           cp "$APK" CHAMAN-GeckoView-Test-ARM64.apk
 

@@ -1,5 +1,8 @@
 # HANDOFF — CHAMAN GeckoView Test
 
+## Real goal (Najeef's plan)
+Main purpose: **cookies export**, jo CHAMAN Downloader me merge hoga. Firefox extensions deta hai, lekin cookie export ke liye friendly nahi hai. Isliye plan hai ek chhota mini browser banane ka, jo sirf isi kaam ke liye ho: user login kare, phir **1-2 tap** me cookies export ho jayein (Downloader ke liye). Ye GeckoView test us plan ka feasibility step hai.
+
 ## Project purpose
 Separate proof-of-concept APK to evaluate GeckoView as a possible engine for a future CHAMAN Browser branch. Existing CHAMAN Browser V2 remains untouched.
 
@@ -22,6 +25,10 @@ Separate proof-of-concept APK to evaluate GeckoView as a possible engine for a f
 - Native messaging bridge sends hostname and cookie count only.
 - Cookie values and names are not sent to Android.
 - GitHub Actions workflow builds and uploads an ARM64 APK artifact.
+
+## Changelog
+- 0.1 CI fix: `android-actions/setup-android@v3` hata diya (obsolete `tools` package pe sdkmanager exit 1). Runner ka preinstalled SDK use hota hai + `yes | sdkmanager --licenses` + packages install. APK copy step ab `*arm64-v8a*release*.apk` pin karta hai (splits se 2 APK banti hain).
+- GeckoView version `160.0.20261104181552` abhi verify nahi hua; agar dependency resolve fail ho to pehle ye check karo.
 
 ## Required device tests
 - [ ] CI build succeeds.

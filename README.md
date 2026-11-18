@@ -2,6 +2,10 @@
 
 A separate ARM64 proof-of-concept APK. It does **not** replace or modify the existing CHAMAN Browser V2 project.
 
+## Real goal
+
+Final purpose: cookies export for CHAMAN Downloader. Firefox extensions support karta hai par cookie export ke liye friendly nahi hai, isliye ek chhota mini browser banana hai jisme login ke baad 1-2 tap me cookies export ho jayein. Ye test usi plan ka feasibility step hai.
+
 ## What this test proves
 
 1. GeckoView starts and loads web pages.
