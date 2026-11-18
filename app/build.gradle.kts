@@ -13,8 +13,21 @@ android {
         applicationId = "com.chaman.browser.geckotest"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2-cookie-export"
+        versionCode = 3
+        versionName = "0.3.0-handshake"
+    }
+
+    // Permanent signing key (same key as CHAMAN Downloader). CI secrets give env vars; without them debug key.
+    val chamanKeystore = System.getenv("CHAMAN_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (chamanKeystore != null) {
+            create("chaman") {
+                storeFile = chamanKeystore
+                storePassword = System.getenv("CHAMAN_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("CHAMAN_KEY_ALIAS") ?: "chaman"
+                keyPassword = System.getenv("CHAMAN_KEYSTORE_PASSWORD") // PKCS12: key password = store password
+            }
+        }
     }
 
     // Test APK is intentionally ARM64-only to keep the first GeckoView build smaller.
@@ -41,7 +54,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("chaman") ?: signingConfigs.getByName("debug")
         }
     }
 }

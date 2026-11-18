@@ -1,5 +1,7 @@
 package com.chaman.geckotest
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.TextUtils
@@ -11,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -29,7 +32,9 @@ private data class Site(
     val hint: String,
     val startUrl: String,
     // Used only for cookie export. Navigation is NOT restricted by this list.
-    val cookieDomains: List<String>
+    val cookieDomains: List<String>,
+    // Cookie NAMES that prove a login (only the name is checked, never the value).
+    val loginCookies: List<String>
 )
 
 private val SITES = listOf(
@@ -38,14 +43,16 @@ private val SITES = listOf(
         name = "Instagram",
         hint = "Login karo, phir Export dabao",
         startUrl = "https://www.instagram.com/accounts/login/",
-        cookieDomains = listOf("instagram.com")
+        cookieDomains = listOf("instagram.com"),
+        loginCookies = listOf("sessionid")
     ),
     Site(
         id = "youtube",
         name = "YouTube",
         hint = "Google login ke baad Export dabao",
         startUrl = "https://www.youtube.com/",
-        cookieDomains = listOf("youtube.com", "google.com")
+        cookieDomains = listOf("youtube.com", "google.com"),
+        loginCookies = listOf("SAPISID", "__Secure-3PSID", "SID")
     )
 )
 
@@ -63,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingSite: Site? = null
     private var exportPort: WebExtension.Port? = null
     private var canGoBack = false
+    private var fromDownloader = false
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
@@ -136,6 +144,21 @@ class MainActivity : AppCompatActivity() {
         geckoView.setSession(session)
 
         installExtension()
+        handleLaunch(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLaunch(intent)
+    }
+
+    // Handshake 1: Downloader opens the login page of one site directly (see Handshake.md).
+    private fun handleLaunch(i: Intent?) {
+        if (i?.action != ACTION_LOGIN) return
+        val site = SITES.firstOrNull { it.id == i.getStringExtra("site") } ?: return
+        fromDownloader = true
+        openSite(site)
     }
 
     private fun buildHome(): LinearLayout {
@@ -329,6 +352,7 @@ class MainActivity : AppCompatActivity() {
                 .put("type", "EXPORT_COOKIES")
                 .put("site", site.id)
                 .put("domains", JSONArray(site.cookieDomains))
+                .put("loginNames", JSONArray(site.loginCookies))
         )
     }
 
@@ -337,6 +361,10 @@ class MainActivity : AppCompatActivity() {
         if (message.optString("site") != site.id) return
         pendingSite = null
 
+        if (!message.optBoolean("loggedIn", true)) {
+            setStatus("${site.name}: login nahi hua. Pehle login karo, phir Export")
+            return
+        }
         val text = message.optString("text")
         val (good, bad) = validateNetscape(text)
         if (bad > 0) {
@@ -349,9 +377,29 @@ class MainActivity : AppCompatActivity() {
         }
         val bytes = text.toByteArray(Charsets.UTF_8)
         val dir = File(cacheDir, "cookies").apply { mkdirs() }
-        File(dir, "${site.id}.txt").writeBytes(bytes)
+        val file = File(dir, "${site.id}.txt")
+        file.writeBytes(bytes)
         // Only count and size are shown. Cookie names/values are never displayed or logged.
-        setStatus("${site.name} · $good cookies · ${formatSize(bytes.size)} · Netscape format valid · app cache me saved")
+        setStatus("${site.name} · $good cookies · ${formatSize(bytes.size)} · Netscape format valid")
+        sendToDownloader(site, file, good)
+    }
+
+    // Handshake 2: hand the file to CHAMAN Downloader (explicit intent + one-file read grant).
+    // Downloader comes to the front, which is the "redirect back".
+    private fun sendToDownloader(site: Site, file: File, count: Int) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.cookies", file)
+            val send = Intent(ACTION_IMPORT)
+                .setClassName(DOWNLOADER_PKG, DOWNLOADER_ACTIVITY)
+                .setData(uri)
+                .putExtra("site", site.id)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(send)
+        } catch (e: ActivityNotFoundException) {
+            setStatus("${site.name} · $count cookies ready, par CHAMAN Downloader install nahi hai")
+        } catch (e: Exception) {
+            setStatus("Downloader ko bhejna fail: ${e.message ?: e.javaClass.simpleName}")
+        }
     }
 
     // Returns (valid data lines, invalid lines). Header must be the Netscape marker.
@@ -390,6 +438,11 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val EXTENSION_ID = "chaman-cookie-bridge-test@chaman.app"
         private const val NATIVE_APP_ID = "chaman.browser"
+        // Handshake contract: see Handshake.md (keep identical in both repos).
+        private const val ACTION_LOGIN = "com.chaman.browser.action.LOGIN"
+        private const val ACTION_IMPORT = "com.chaman.downloader.action.IMPORT_COOKIES"
+        private const val DOWNLOADER_PKG = "com.chaman.downloader"
+        private const val DOWNLOADER_ACTIVITY = "com.chaman.downloader.MainActivity"
         private const val COLOR_BG = 0xFF11151A.toInt()
         private const val COLOR_CARD = 0xFF20242B.toInt()
         private const val COLOR_ACCENT = 0xFFD7B56D.toInt()

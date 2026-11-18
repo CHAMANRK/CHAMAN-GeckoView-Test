@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -41,6 +41,22 @@ jobs:
         with:
           gradle-version: "8.14.3"
 
+      - name: Prepare signing key
+        env:
+          KS_B64: ${{ secrets.CHAMAN_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.CHAMAN_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/chaman-release.jks"
+            echo "CHAMAN_KEYSTORE_FILE=$RUNNER_TEMP/chaman-release.jks" >> "$GITHUB_ENV"
+            echo "CHAMAN_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+            echo "CHAMAN_KEY_ALIAS=chaman" >> "$GITHUB_ENV"
+            echo "SIGNING=chaman permanent key" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Signing secrets nahi mile, debug key use hogi. Downloader is APK ko reject karega (signature match nahi)."
+            echo "SIGNING=debug key (fallback)" >> "$GITHUB_ENV"
+          fi
+
       - name: Build ARM64 test APK
         run: |
           set -o pipefail
@@ -70,6 +86,9 @@ jobs:
           APK=$(find app/build/outputs/apk/release -name '*arm64-v8a*release*.apk' | head -n 1)
           test -n "$APK"
           cp "$APK" CHAMAN-GeckoView-Test-ARM64.apk
+          # Fixed name: Downloader downloads releases/latest/download/CHAMAN-Cookie-Browser.apk
+          cp "$APK" CHAMAN-Cookie-Browser.apk
+          echo "signing: $SIGNING"
 
       - name: Upload test APK
         uses: actions/upload-artifact@v4
@@ -78,3 +97,16 @@ jobs:
           path: CHAMAN-GeckoView-Test-ARM64.apk
           if-no-files-found: error
           retention-days: 14
+
+      # Tag push (v*) publishes the APK as a GitHub Release so Downloader can install it.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" CHAMAN-Cookie-Browser.apk --clobber
+          else
+            gh release create "$TAG" CHAMAN-Cookie-Browser.apk --title "CHAMAN Cookie Browser $TAG" --notes "signing: $SIGNING"
+          fi

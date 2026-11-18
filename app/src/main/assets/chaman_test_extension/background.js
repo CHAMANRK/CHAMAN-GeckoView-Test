@@ -82,11 +82,18 @@ async function exportCookies(msg) {
         unique.set(`${c.domain}|${c.path}|${c.name}|${c.storeId}`, c);
       }
     }
-    const lines = Array.from(unique.values())
+    const all = Array.from(unique.values());
+    // Login check by cookie NAME only (value must be non-empty). Nothing is sent about it except true/false.
+    const loginNames = Array.isArray(msg.loginNames)
+      ? msg.loginNames.filter((n) => typeof n === "string")
+      : [];
+    const loggedIn = loginNames.length === 0 ||
+      all.some((c) => loginNames.includes(c.name) && c.value);
+    const lines = all
       .sort((a, b) => (a.domain + a.name).localeCompare(b.domain + b.name))
       .map(toNetscapeLine);
     const text = "# Netscape HTTP Cookie File\n" + lines.join("\n") + (lines.length ? "\n" : "");
-    port.postMessage({ type: "COOKIES_TXT", site, count: lines.length, text });
+    port.postMessage({ type: "COOKIES_TXT", site, count: lines.length, loggedIn, text });
   } catch (error) {
     if (port) port.postMessage({ type: "COOKIES_ERROR", site, error: String(error) });
   }
