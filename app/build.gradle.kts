@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.chaman.geckotest"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.chaman.browser.geckotest"

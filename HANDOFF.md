@@ -13,8 +13,9 @@ Separate proof-of-concept APK to evaluate GeckoView as a possible engine for a f
 - Min SDK: 26
 - Target: ARM64 test APK
 - Java: 17
-- AGP: 8.7.3
-- Gradle: 8.9
+- AGP: 8.11.1
+- Gradle: 8.14.3
+- compileSdk: 36 (targetSdk 35)
 
 ## Implemented in source
 - Minimal URL bar and GeckoView surface.
@@ -29,6 +30,7 @@ Separate proof-of-concept APK to evaluate GeckoView as a possible engine for a f
 ## Changelog
 - 0.1 CI fix: `android-actions/setup-android@v3` hata diya (obsolete `tools` package pe sdkmanager exit 1). Runner ka preinstalled SDK use hota hai + `yes | sdkmanager --licenses` + packages install. APK copy step ab `*arm64-v8a*release*.apk` pin karta hai (splits se 2 APK banti hain).
 - CI fix #2: runner pe `sdkmanager` PATH me nahi tha (exit 127). Ab `$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager` (fallback: find) full path se chalta hai.
+- CI fix #3: `:app:checkReleaseAarMetadata` fail (13 issues). GeckoView ki androidx deps newer compileSdk/AGP maangti hain. Bumped compileSdk 35->36, AGP 8.7.3->8.11.1, Gradle 8.9->8.14.3, workflow me platforms;android-36 + build-tools;36.0.0 install. Agar phir fail ho to log ki `Dependency '...' requires` lines dekh ke exact version lena.
 - GeckoView version `160.0.20261104181552` abhi verify nahi hua; agar dependency resolve fail ho to pehle ye check karo.
 
 ## Required device tests
